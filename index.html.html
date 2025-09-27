@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Martins Cuisine Menu</title>
+  <style>
+    body { font-family: Arial, sans-serif; }
+    h1, h2 { text-align: center; }
+    .menu-item {
+      display: flex;
+      justify-content: space-between;
+      margin: 5px 0;
+    }
+    .receipt {
+      display: none;
+      font-family: monospace;
+      padding: 20px;
+    }
+    @media print {
+      body * { visibility: hidden; }
+      .receipt, .receipt * { visibility: visible; }
+      .receipt {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 80mm;
+        font-size: 12px;
+        line-height: 1.4;
+        background: white;
+      }
+    }
+    table { width: 100%; border-collapse: collapse; }
+    .receipt td, .receipt th { padding: 4px 0; }
+    .right { text-align: right; }
+    #admin-panel input { margin: 4px; }
+    #orderHistoryList, #cartList {
+      margin: 10px;
+      padding-left: 20px;
+    }
+  </style>
+</head>
+<body>
+
+<h1>Martins Cuisine Menu</h1>
+
+<label for="tableSelect"><strong>Select Table:</strong></label>
+<select id="tableSelect">
+  <option>Table 1</option>
+  <option>Table 2</option>
+</select>
+
+<input type="text" id="search" placeholder="Search menu items..." />
+
+<h2>Menu</h2>
+<div id="menu"></div>
+
+<h2>Your Order</h2>
+<ul id="orderList">No items in order.</ul>
+
+<label>Discount (%) <input id="discount" type="number" value="0" /></label>
+<label>Tax (%) <input id="tax" type="number" value="0" /></label>
+
+<p><strong>Subtotal:</strong> £<span id="subtotal">0.00</span></p>
+<p><strong>Total:</strong> £<span id="total">0.00</span></p>
+
+<button onclick="saveCurrentOrder()">Add to Cart</button>
+<button onclick="printReceipt()">Print Receipt</button>
+
+<h2>Cart</h2>
+<ul id="cartList">No saved orders.</ul>
+
+<h2>Order History</h2>
+<ul id="orderHistoryList"></ul>
+<button onclick="clearOrderHistory()">Clear Order History</button>
+
+<h2>Admin Panel (Change Prices / Add Menu Items)</h2>
+<div id="admin-panel">
+  <input type="text" id="newItemName" placeholder="Item name" />
+  <input type="number" id="newItemPrice" placeholder="Price" />
+  <button onclick="addMenuItem()">Add Item</button>
+</div>
+
+<div class="receipt" id="receipt">
+  <div style="text-align:center;">
+    <strong>MARTINS CUISINE LTD</strong><br/>
+    201 Welford Road<br/>
+    LE2 6BH<br/>
+    United Kingdom<br/><br/>
+    <strong>Receipt</strong><br/><br/>
+    Date: <span id="receipt-date"></span><br/>
+    Receipt no: <span id="receipt-id"></span><br/><br/>
+  </div>
+
+  <table id="receipt-items">
+    <tr><th>Items</th><th class="right">Amount</th></tr>
+  </table>
+
+  <hr/>
+
+  <table>
+    <tr><td><strong>Subtotal</strong></td><td class="right">£<span id="receipt-subtotal">0.00</span></td></tr>
+    <tr><td><strong>Total</strong></td><td class="right">£<span id="receipt-total">0.00</span></td></tr>
+  </table>
+
+  <br/>
+  <table>
+    <tr><th>VAT %</th><th>Net</th><th>VAT</th><th>Gross</th></tr>
+    <tr><td>A None</td><td>£<span id="receipt-vat-net">0.00</span></td><td>–</td><td>£<span id="receipt-vat-gross">0.00</span></td></tr>
+  </table>
+
+  <br/><br/>
+  <strong>Payment</strong><br/>
+  Transaction ID: <span id="transaction-id">TAAAVLS4S2A</span><br/>
+  I AGREE TO PAY THE ABOVE TOTAL AMOUNT<br/>
+  ACCORDING TO THE CARD ISSUER AGREEMENT<br/><br/>
+  Authorisation code: <span id="auth-code">672958</span>
+</div>
+
+<script>
+  const defaultMenuData = [
+    { "name": "1. Steamed Rice", "price": 2.50 },
+    { "name": "2. Jeera Rice", "price": 3.00 },
+    { "name": "3. Pilau Rice", "price": 3.00 },
+    { "name": "4. Plain Naan", "price": 1.50 },
+    { "name": "5. Garlic Naan", "price": 2.00 },
+    { "name": "6. Kheema Naan", "price": 3.00 },
+    { "name": "7. Peshawari Naan", "price": 2.50 },
+    { "name": "8. Chilli Garlic Coriander Naan", "price": 2.50 },
+    { "name": "9. Cheese Naan", "price": 2.50 },
+    { "name": "10. Chicken Tikka Naan", "price": 3.00 },
+    { "name": "11. Chicken Tikka Cheese Naan", "price": 3.50 },
+    { "name": "12. Tandoori Roti", "price": 1.50 },
+    { "name": "13. 15 Tandoori Wings & Masala Chips", "price": 10.00 },
+    { "name": "14. 8 Chilli Cheese Nuggets & Masala Cheesy Chips", "price": 7.00 },
+    { "name": "15. 1 Tandoori Leg, 4 Tandoori Chicken Wings & Chips", "price": 7.00 },
+    { "name": "16. Paneer Chilli & Egg Fried Rice", "price": 7.99 },
+    { "name": "17. Chicken Manchurian & Egg Fried Rice", "price": 7.99 },
+    { "name": "18. Chicken Chilli & Egg Fried Rice", "price": 7.99 },
+    { "name": "19. Chicken 65 & Egg Fried Rice", "price": 7.99 },
+    { "name": "20. Chicken Tikka & Chips (with Rice or Naan, choice of Chicken Tikka Sauce or Curry Sauce)", "price": 8.99 },
+    { "name": "21. Vegetable Biryani", "price": 7.99 },
+    { "name": "22. Paneer Biryani", "price": 7.99 },
+    { "name": "23. Mushroom Biryani", "price": 7.99 },
+    { "name": "24. Chicken Biryani", "price": 8.99 },
+    { "name": "25. Chicken Tikka Biryani", "price": 8.99 },
+    { "name": "26. Lamb Biryani", "price": 9.99 },
+    { "name": "27. Prawns Biryani", "price": 9.99 },
+    { "name": "28. Tilapia Fish Biryani", "price": 9.99 },
+    { "name": "29. Paneer Tikka Wrap & Chips", "price": 7.00 },
+    { "name": "30. Chicken Tikka Wrap & Chips", "price": 7.00 },
+    { "name": "31. Chicken Shish Kebab Wrap & Chips", "price": 7.50 },
+    { "name": "32. Lamb Shish Kebab Wrap & Chips", "price": 7.50 },
+    { "name": "33. Veg Burger & Chips", "price": 5.99 },
+    { "name": "34. Chicken Tikka Burger & Chips", "price": 5.99 },
+    { "name": "35. Chicken Shish Kebab Burger & Chips", "price": 6.99 },
+    { "name": "36. Lamb Shish Kebab Burger & Chips", "price": 7.99 },
+    { "name": "37. Ferrero Rocher", "price": 4.95 },
+    { "name": "38. Cadbury’s Flake", "price": 4.95 },
+    { "name": "39. Strawberry Flute", "price": 4.95 },
+    { "name": "40. Matka Kulfi", "price": 4.95 },
+    { "name": "41. Gulab Jamun", "price": 3.00 },
+    { "name": "42. Coconut Supreme", "price": 4.95 },
+    { "name": "43. Punky (Vanilla Ice Cream in Toy)", "price": 3.99 },
+    { "name": "44. Kauky (Chocolate Ice Cream in Toy)", "price": 3.99 },
+    { "name": "45. Chicken Samosa (2 pcs)", "price": 3.50 },
+    { "name": "46. Chicken Pakora (6 pcs)", "price": 3.99 },
+    { "name": "47. Tandoori Chicken (Quarter)", "price": 4.50 },
+    { "name": "48. Chicken Wings (6 pcs)", "price": 3.99 },
+    { "name": "49. Chicken Tikka (6 pcs)", "price": 4.99 },
+    { "name": "50. Lamb Chops (4 pcs)", "price": 7.99 },
+    { "name": "51. Lamb Seekh Kebab (6 pcs)", "price": 6.99 },
+    { "name": "52. Lamb Shish Kebab (6 pcs)", "price": 7.99 },
+    { "name": "53. Lamb Tikka (6 pcs)", "price": 6.99 },
+    { "name": "54. Paneer Tikka (6 pcs)", "price": 5.99 },
+    { "name": "55. Chicken Tikka Masala", "price": 7.99 },
+    { "name": "56. Chicken Curry", "price": 7.99 },
+    { "name": "57. Chicken Korma", "price": 7.99 },
+    { "name": "58. Chicken Dhansak", "price": 7.99 },
+    { "name": "59. Chicken Vindaloo", "price": 7.99 },
+    { "name": "60. Lamb Curry", "price": 8.99 },
+    { "name": "61. Lamb Rogan Josh", "price": 8.99 },
+    { "name": "62. Lamb Korma", "price": 8.99 },
+    { "name": "63. Lamb Dhansak", "price": 8.99 },
+    { "name": "64. Lamb Vindaloo", "price": 8.99 },
+    { "name": "65. Prawn Curry", "price": 9.99 },
+    { "name": "66. Prawn Korma", "price": 9.99 },
+    { "name": "67. Prawn Dhansak", "price": 9.99 },
+    { "name": "68. Prawn Vindaloo", "price": 9.99 },
+    { "name": "69. Vegetable Curry", "price": 6.99 },
+    { "name": "70. Vegetable Korma", "price": 6.99 },
+    { "name": "71. Vegetable Dhansak", "price": 6.99 },
+    { "name": "72. Vegetable Vindaloo", "price": 6.99 },
+    { "name": "73. Chicken Fried Rice", "price": 6.50 },
+    { "name": "74. Egg Fried Rice", "price": 5.50 },
+    { "name": "75. Vegetable Fried Rice", "price": 5.50 },
+    { "name": "76. Chicken Chow Mein", "price": 7.00 },
+    { "name": "77. Vegetable Chow Mein", "price": 6.50 },
+    { "name": "78. Chicken Spring Roll (4 pcs)", "price": 4.50 },
+    { "name": "79. Vegetable Spring Roll (4 pcs)", "price": 4.50 },
+    { "name": "80. Chicken Curry (Thai Style)", "price": 8.50 },
+    { "name": "81. Thai Green Curry", "price": 8.50 },
+    { "name": "82. Thai Red Curry", "price": 8.50 },
+    { "name": "83. Massaman Curry", "price": 8.50 },
+    { "name": "84. Pad Thai (Chicken)", "price": 8.50 },
+    { "name": "85. Pad Thai (Vegetable)", "price": 7.50 },
+    { "name": "86. Tom Yum Soup", "price": 4.99 },
+    { "name": "87. Mango Sticky Rice", "price": 5.99 },
+    { "name": "88. Coconut Rice", "price": 3.99 }
+  ];
+
+  let menuData = [...defaultMenuData];
+  let order = [];
+  let orderHistory = JSON.parse(localStorage.getItem('orderHistory')) || [];
+
+  const menuEl = document.getElementById('menu');
+  const orderListEl = document.getElementById('orderList');
+  const cartListEl = document.getElementById('cartList');
+  const orderHistoryListEl = document.getElementById('orderHistoryList');
+  const discountInput = document.getElementById('discount');
+  const taxInput = document.getElementById('tax');
+  const subtotalEl = document.getElementById('subtotal');
+  const totalEl = document.getElementById('total');
+  const searchInput = document.getElementById('search');
+
+  function renderMenu(filter = '') {
+    menuEl.innerHTML = '';
+    let filteredMenu = menuData.filter(item => item.name.toLowerCase().includes(filter.toLowerCase()));
+    filteredMenu.forEach((item, index) => {
+      const itemDiv = document.createElement('div');
+      itemDiv.className = 'menu-item';
+      itemDiv.innerHTML = `
+        <span>${item.name} - £${item.price.toFixed(2)}</span>
+        <button onclick="addToOrder(${index})">Add</button>
+      `;
+      menuEl.appendChild(itemDiv);
+    });
+    if(filteredMenu.length === 0) {
+      menuEl.innerHTML = '<p>No items found.</p>';
+    }
+  }
+
+  function renderOrder() {
+    orderListEl.innerHTML = '';
+    if(order.length === 0) {
+      orderListEl.textContent = 'No items in order.';
+      updateTotals();
+      return;
+    }
+    order.forEach((item, index) => {
+      const li = document.createElement('li');
+      li.textContent = `${item.name} - £${item.price.toFixed(2)} x${item.quantity}`;
+      const btn = document.createElement('button');
+      btn.textContent = 'Remove';
+      btn.onclick = () => {
+        order.splice(index, 1);
+        renderOrder();
+      };
+      li.appendChild(btn);
+      orderListEl.appendChild(li);
+    });
+    updateTotals();
+  }
+
+  function addToOrder(menuIndex) {
+    const menuItem = menuData[menuIndex];
+    const existing = order.find(i => i.name === menuItem.name);
+    if(existing) {
+      existing.quantity++;
+    } else {
+      order.push({ ...menuItem, quantity: 1 });
+    }
+    renderOrder();
+  }
+
+  function updateTotals() {
+    let subtotal = order.reduce((acc, item) => acc + item.price * item.quantity, 0);
+    let discountPercent = parseFloat(discountInput.value) || 0;
+    let taxPercent = parseFloat(taxInput.value) || 0;
+    let discounted = subtotal - (subtotal * discountPercent / 100);
+    let total = discounted + (discounted * taxPercent / 100);
+    subtotalEl.textContent = subtotal.toFixed(2);
+    totalEl.textContent = total.toFixed(2);
+  }
+
+  discountInput.addEventListener('input', updateTotals);
+  taxInput.addEventListener('input', updateTotals);
+  searchInput.addEventListener('input', () => { renderMenu(searchInput.value); });
+
+  function saveCurrentOrder() {
+    if(order.length === 0) { alert('Order is empty!'); return; }
+    const table = document.getElementById('tableSelect').value;
+    const discountPercent = parseFloat(discountInput.value) || 0;
+    const taxPercent = parseFloat(taxInput.value) || 0;
+    const subtotal = order.reduce((acc, i) => acc + i.price * i.quantity, 0);
+    const discounted = subtotal - (subtotal * discountPercent / 100);
+    const total = discounted + (discounted * taxPercent / 100);
+    const orderToSave = {
+      id: Date.now(),
+      table,
+      order: JSON.parse(JSON.stringify(order)),
+      discountPercent,
+      taxPercent,
+      subtotal,
+      total,
+      date: new Date().toLocaleString()
+    };
+    orderHistory.push(orderToSave);
+    localStorage.setItem('orderHistory', JSON.stringify(orderHistory));
+    renderOrderHistory();
+    clearCurrentOrder();
+    alert('Order saved to cart!');
+  }
+
+  function renderOrderHistory() {
+    orderHistoryListEl.innerHTML = '';
+    if(orderHistory.length === 0) {
+      orderHistoryListEl.textContent = 'No past orders.';
+      cartListEl.textContent = 'No saved orders.';
+      return;
+    }
+    cartListEl.innerHTML = '';
+    orderHistory.forEach((ord, i) => {
+      const li = document.createElement('li');
+      li.textContent = `${ord.table} - ${ord.date} - £${ord.total.toFixed(2)}`;
+      const btnLoad = document.createElement('button');
+      btnLoad.textContent = 'Load';
+      btnLoad.onclick = () => {
+        order = JSON.parse(JSON.stringify(ord.order));
+        discountInput.value = ord.discountPercent;
+        taxInput.value = ord.taxPercent;
+        renderOrder();
+      };
+      const btnDelete = document.createElement('button');
+      btnDelete.textContent = 'Delete';
+      btnDelete.onclick = () => {
+        orderHistory.splice(i,1);
+        localStorage.setItem('orderHistory', JSON.stringify(orderHistory));
+        renderOrderHistory();
+      };
+      li.appendChild(btnLoad);
+      li.appendChild(btnDelete);
+      cartListEl.appendChild(li);
+    });
+  }
+
+  function clearCurrentOrder() { order = []; discountInput.value = 0; taxInput.value = 0; renderOrder(); }
+  function clearOrderHistory() { if(confirm('Are you sure you want to clear order history?')) { orderHistory = []; localStorage.removeItem('orderHistory'); renderOrderHistory(); } }
+
+  function addMenuItem() {
+    const nameInput = document.getElementById('newItemName');
+    const priceInput = document.getElementById('newItemPrice');
+    const name = nameInput.value.trim();
+    const price = parseFloat(priceInput.value);
+    if(!name || isNaN(price) || price <= 0) { alert('Please enter a valid item name and price.'); return; }
+    menuData.push({ name, price });
+    nameInput.value = '';
+    priceInput.value = '';
+    renderMenu(searchInput.value);
+  }
+
+  function printReceipt() {
+    if(order.length === 0) { alert('No items in order to print!'); return; }
+
+    // Save order to history
+    const table = document.getElementById('tableSelect').value;
+    const discountPercent = parseFloat(discountInput.value) || 0;
+    const taxPercent = parseFloat(taxInput.value) || 0;
+    const subtotal = order.reduce((acc, i) => acc + i.price * i.quantity, 0);
+    const discounted = subtotal - (subtotal * discountPercent / 100);
+    const total = discounted + (discounted * taxPercent / 100);
+    const orderToSave = {
+      id: Date.now(),
+      table,
+      order: JSON.parse(JSON.stringify(order)),
+      discountPercent,
+      taxPercent,
+      subtotal,
+      total,
+      date: new Date().toLocaleString()
+    };
+    orderHistory.push(orderToSave);
+    localStorage.setItem('orderHistory', JSON.stringify(orderHistory));
+    renderOrderHistory();
+
+    // Generate receipt
+    const receiptEl = document.getElementById('receipt');
+    const receiptItemsTable = document.getElementById('receipt-items');
+    const receiptDate = document.getElementById('receipt-date');
+    const receiptId = document.getElementById('receipt-id');
+    const receiptSubtotal = document.getElementById('receipt-subtotal');
+    const receiptTotal = document.getElementById('receipt-total');
+    const receiptVatNet = document.getElementById('receipt-vat-net');
+    const receiptVatGross = document.getElementById('receipt-vat-gross');
+
+    while(receiptItemsTable.rows.length > 1) receiptItemsTable.deleteRow(1);
+
+    let subtotalCalc = 0;
+    order.forEach(item => {
+      const row = receiptItemsTable.insertRow();
+      const cellName = row.insertCell(0);
+      const cellPrice = row.insertCell(1);
+      cellName.textContent = `${item.name} x${item.quantity}`;
+      const amount = item.price * item.quantity;
+      cellPrice.textContent = `£${amount.toFixed(2)}`;
+      cellPrice.className = 'right';
+      subtotalCalc += amount;
+    });
+
+    let discountedCalc = subtotalCalc - (subtotalCalc * discountPercent / 100);
+    let totalCalc = discountedCalc + (discountedCalc * taxPercent / 100);
+
+    receiptDate.textContent = new Date().toLocaleString();
+    receiptId.textContent = 'R' + Date.now();
+    receiptSubtotal.textContent = subtotalCalc.toFixed(2);
+    receiptTotal.textContent = totalCalc.toFixed(2);
+    receiptVatNet.textContent = discountedCalc.toFixed(2);
+    receiptVatGross.textContent = totalCalc.toFixed(2);
+
+    receiptEl.style.display = 'block';
+    window.print();
+    receiptEl.style.display = 'none';
+
+    // Clear current order after printing
+    clearCurrentOrder();
+  }
+
+  // Initialize
+  renderMenu();
+  renderOrder();
+  renderOrderHistory();
+</script>
+
+</body>
+</html>
